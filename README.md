@@ -16,7 +16,8 @@ Im Terminal kann das Skript über zusätzliche Befehle zu `python ocr-extractor.
     * `-histlit`: Historische Zeichen werden als UTF-8-codierte Zeichen beibehalten. Wird der Befehl nicht gesetzt, werden die Zeichen normalisiert: `Ich ſehe dich` --> `Ich sehe dich`
 - Speicherort:
     * `-o`, `-output` + Pfad: Speicherort des Textes. Wird kein Speicherort angegeben, werden die Volltexte im selben Ordner wie die Skripte gespeichert.
- Beispiel: `python ocr-extractor.py mets.xml -json -full -histlit` Für die Speicherung des Volltexts in einer einzigen Datei als JSON mit historischen Zeichen.
+
+Beispiel: `python ocr-extractor.py mets.xml -json -full -histlit` Für die Speicherung des Volltexts in einer einzigen Datei als JSON mit historischen Zeichen.
 
 **Achtung, frühe Version**:
 
