@@ -1,24 +1,33 @@
 # OCR-Volltextextraktor
-Das Skript extrahiert OCR-erkannte Volltexte aus Digitalisaten. Benötigt wird lediglich die METS.XML des Digitalisats, die die Volltexte enthält (Links auf ALTO-XML). Das Skript kann auf zwei Varianten genutzt werden:
-## Variante 1: Schrittweise ausführen
-Im Terminal kann das Skript mit `python ocr-extractor.py` ausgeführt werden oder über jede IDE. Es müssen alle Dateien im selben Ordner liegen. Anschließend kann schrittweise den Fragen gefolgt werden.
-## Variante 2: Ausführen in der Konsole mit Befehlen
-Im Terminal kann das Skript über zusätzliche Befehle zu `python ocr-extractor.py` ausgeführt werden:
-- `mets.xml`: Angabe des Pfads der METS-Datei
-- Art der Ausgabe des Volltexts:
-    * `-full`: Der Volltext wird in einer einzigen Datei gespeichert. Wird keine Ausgabeart angegeben, werden die Texte standardmäßig in einer einzigen Datei gespeichert.
-    * `-page`: Der Volltext wird seitenweise in einem separaten Ordner gespeichert
-- Dateiformat:
-    * `-txt`: Speicherung als Textdatei. Wird kein Dateiformat angegeben, wird der Text standardmäßig als .txt gespeichert.
-    * `-md`: Speicherung als Markdown
-    * `-json`: Speicherung als JSON
-- Umgang mit historischen Zeichen (langes s, Ligaturen u.a.):
-    * `-histlit`: Historische Zeichen werden als UTF-8-codierte Zeichen beibehalten. Wird der Befehl nicht gesetzt, werden die Zeichen normalisiert: `Ich ſehe dich` --> `Ich sehe dich`
-- Speicherort:
-    * `-o`, `-output` + Pfad: Speicherort des Textes. Wird kein Speicherort angegeben, werden die Volltexte im selben Ordner wie die Skripte gespeichert.
+Python-Skript zur Extraktion von OCR-erkannten Volltexten aus Digitalisaten. Dazu wird ein METS.XML eingelesen, um die ALTO-Dateien zu extrahieren und den Text als .txt, JSON oder Markdown auszugeben.
+## Voraussetzungen
+Benötigt werden die Bibliotheken `requests` und `lxml`.
+## Anwendung
+Das Skript ist über die Konsole ausführbar.
+### Befehlszeilenargumente
+Für die Verwendung mit Argumenten der Befehlszeile muss eine METS.XML angegeben werden.
 
-Beispiel: `python ocr-extractor.py mets.xml -json -full -histlit` Für die Speicherung des Volltexts in einer einzigen Datei als JSON mit historischen Zeichen.
+```python ocr-extractor.py mets.xml [Optionen]```
 
-**Achtung, frühe Version**:
+Folgende Optionen sind verfügbar:
+| Option | Beschreibung
+|:-------|:---------------------------------
+| `-txt` | Ausgabe als .txt (wird als Standard angewandt)
+| `-json`| Ausgabe als JSON (Standard: .txt)
+| `-md` | Ausgabe als Markdown (Standard: .txt)
+| `-full` | Gesamter Text wird in einer Datei gespeichert (wird als Standard angewandt)
+| `-page` | Jede Seite wird als eigene Datei gespeichert
+| `-histlist` | Beibehaltung historischer Zeichen (Bspw. Ligaturen, ſ statt s)
+| `-o <Pfad>` | Ausgabeverzeichnis angeben (standardmäßig wird der gleiche Ordner verwandt)
 
-Das Skript muss weiter getestet werden.
+Beispiel: 
+
+```python ocr-extractor.py mets.xml -page -json -histlit -o ausgabe/```
+
+Der Text wird seitenweise als JSON mit historischen Zeichen in einem neu angelegten Ordner `ausgabe` gespeichert.
+### Ohne Befehlszeilenargumente
+Das Skript kann interaktiv ausgeführt werden. Über
+
+```python ocr-extractor.py```
+
+werden alle erforderlichen Schritte nacheinander abgefragt. 
