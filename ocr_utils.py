@@ -59,12 +59,12 @@ def normalize_historical_characters(text: str) -> str:
     wie das lange s (ſ), Ligaturen und Akzentvarianten.
     Diese Funktion kann je nach Projektbedarf erweitert werden.
     """
-    replacements = {"ſ": "s",     # langes s
-                    "ꝛ": "r",     # rundes r
-                    "æ": "ae", "Æ": "Ae",
-                    "œ": "oe", "Œ": "Oe",        
-                    "ﬀ": "ff", "ﬁ": "fi", "ﬂ": "fl", "ﬃ": "ffi", "ﬄ": "ffl",
-                    "ꞵ": "ß",
+    replacements = {"ſ": "s", "ẞ": "SS", 
+                    "ﬀ": "ff", "ﬁ": "fi", "ﬂ": "fl", "ﬃ": "ffi", "ﬄ": "ffl",        
+                    "uͤ": "ü", "oͤ": "ö", "aͤ": "ä", 
+                    "Uͤ": "Ü", "Oͤ": "Ö", "Aͤ": "Ä",
+                    "ü": "ü", "ö": "ö", "ä": "ä",
+                    "⸗": "-"                    
     }
 
     for old, new in replacements.items():
