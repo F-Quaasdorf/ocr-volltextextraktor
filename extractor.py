@@ -1,13 +1,14 @@
 import os
 import json
 import logging
+from typing import List, Dict
 from ocr_utils import load_xml, extract_alto_text
 
 
-def extract_metadata_from_mets(mets_path: str) -> dict[str, str]:
+def extract_metadata_from_mets(mets_path: str) -> Dict[str, str]:
     """
     Liest Metadaten (Titel, Verfasser, Erscheinungsjahr, VD-Nummer) aus der METS-Datei.
-    Gibt ein Dictionary mit den Schlüsseln 'title', 'author', 'year', 'vd_number' zurück.
+    Rückgabe: {'title':..., 'author':..., 'year':..., 'vd_number':...}
     """
     try:
         mets_root = load_xml(mets_path)
@@ -26,7 +27,7 @@ def extract_metadata_from_mets(mets_path: str) -> dict[str, str]:
     year = ""
     vd_number = ""
 
-    # Titel
+    # Titel (MODS -> mods:title OR dc:title)
     title_elem = mets_root.find(".//mods:title", ns)
     if title_elem is not None and title_elem.text:
         title = title_elem.text.strip()
@@ -35,8 +36,8 @@ def extract_metadata_from_mets(mets_path: str) -> dict[str, str]:
         if dc_title is not None and dc_title.text:
             title = dc_title.text.strip()
 
-    # Verfasser
-    name_elem = mets_root.find(".//mods:name/mods:namePart", ns)
+    # Verfasser (MODS namePart OR dc:creator)
+    name_elem = mets_root.find(".//mods:name/mods:displayForm", ns)
     if name_elem is not None and name_elem.text:
         author = name_elem.text.strip()
     else:
@@ -44,7 +45,7 @@ def extract_metadata_from_mets(mets_path: str) -> dict[str, str]:
         if dc_author is not None and dc_author.text:
             author = dc_author.text.strip()
 
-    # Erscheinungsjahr
+    # Erscheinungsjahr (mods:originInfo/mods:dateIssued OR dc:date)
     year_elem = mets_root.find(".//mods:originInfo/mods:dateIssued", ns)
     if year_elem is not None and year_elem.text:
         year = year_elem.text.strip()
@@ -53,24 +54,18 @@ def extract_metadata_from_mets(mets_path: str) -> dict[str, str]:
         if dc_date is not None and dc_date.text:
             year = dc_date.text.strip()
 
-    # VD-Nummer (VD16, VD17, VD18)
-    vd_elem = mets_root.find(".//mods:identifier[@type='vd16']", ns)
-    if vd_elem is not None and vd_elem.text:
-        vd_number = f"VD16 {vd_elem.text.strip()}"
-    else:
-        vd_elem = mets_root.find(".//mods:identifier[@type='vd17']", ns)
+    # VD-Nummer (mods:identifier type=vd16|vd17|vd18)
+    for vd_type in ("vd16", "vd17", "vd18"):
+        vd_elem = mets_root.find(f".//mods:identifier[@type='{vd_type}']", ns)
         if vd_elem is not None and vd_elem.text:
-            vd_number = f"VD17 {vd_elem.text.strip()}"
-        else:
-            vd_elem = mets_root.find(".//mods:identifier[@type='vd18']", ns)
-            if vd_elem is not None and vd_elem.text:
-                vd_number = f"VD18 {vd_elem.text.strip()}"
+            vd_number = f"{vd_type.upper()} {vd_elem.text.strip()}"
+            break
 
     return {"title": title, "author": author, "year": year, "vd_number": vd_number}
 
 
-def extract_alto_links(mets_path: str) -> list[str]:
-    """Extrahiert ALTO-Dateilinks aus einer METS-Datei."""
+def extract_alto_links(mets_path: str) -> List[str]:
+    """Extrahiert ALTO-Dateilinks aus der METS-Datei (nur FULLTEXT fileGrp)."""
     try:
         mets_root = load_xml(mets_path)
     except Exception as e:
@@ -91,7 +86,7 @@ def extract_alto_links(mets_path: str) -> list[str]:
     def sort_key(item):
         try:
             return int(item[0].split("_")[-1])
-        except ValueError:
+        except Exception:
             return item[0]
 
     files.sort(key=sort_key)
@@ -99,10 +94,38 @@ def extract_alto_links(mets_path: str) -> list[str]:
     return [f[1] for f in files]
 
 
-def extract_all_texts(mets_path: str, normalize: bool = True) -> dict[str, str]:
-    """Lädt alle in METS referenzierten ALTO-Dateien und extrahiert den Text pro Seite."""
+def extract_structure(mets_path: str) -> List[Dict[str, str]]:
+    """
+    Liest die logische Struktur (structMap TYPE='LOGICAL') aus METS.
+    Liefert Liste von {"order": <int or None>, "type": <str>, "label": <str>}
+    """
+    try:
+        mets_root = load_xml(mets_path)
+    except Exception as e:
+        logging.error(f"Konnte METS-Datei für Struktur nicht laden: {e}")
+        return []
+
+    ns = {"mets": "http://www.loc.gov/METS/"}
+    struct_divs = mets_root.findall(".//mets:structMap[@TYPE='LOGICAL']//mets:div", ns)
+    structure = []
+
+    for div in struct_divs:
+        order = div.attrib.get("ORDER")
+        div_type = div.attrib.get("TYPE", "")
+        label = div.attrib.get("LABEL", "")
+        order_val = int(order) if order and order.isdigit() else None
+        # Füge nur dann ein, wenn es irgendeine sinnvolle Information gibt
+        if div_type or label:
+            structure.append({"order": order_val, "type": div_type, "label": label})
+
+    logging.info(f"{len(structure)} Strukturelemente gefunden.")
+    return structure
+
+
+def extract_all_texts(mets_path: str, normalize: bool = True) -> Dict[str, str]:
+    """Lädt alle referenzierten ALTO-Dateien und extrahiert den Text pro Seite."""
     alto_links = extract_alto_links(mets_path)
-    texts = {}
+    texts: Dict[str, str] = {}
 
     for i, link in enumerate(alto_links, start=1):
         try:
@@ -117,42 +140,61 @@ def extract_all_texts(mets_path: str, normalize: bool = True) -> dict[str, str]:
     return texts
 
 
-def save_full_output(texts: dict[str, str], output_path: str, fmt: str,
-                     source_file: str = "", metadata: dict[str, str] = None) -> None:
-    """Speichert den gesamten Text in einer einzigen Datei."""
+def save_full_output(texts: Dict[str, str], output_path: str, fmt: str,
+                     structure=None, metadata: Dict[str, str] = None) -> None:
+    """
+    Speichert den gesamten Text in einer einzigen Datei.
+    Bei JSON: List: [ { "structure": [...] }, { "page":..., "text":..., metadata... }, ... ]
+    """
     metadata = metadata or {}
 
     if fmt == "json":
-        # RAG-freundliches JSON: Liste von Seitenobjekten mit Metadaten
-        pages = [
-            {
+        combined = []
+        # Erst Struktur (falls vorhanden)
+        if structure:
+            # optional Struktur-Top-Objekt kann auch Metadaten enthalten, aber wir
+            # folgen Wunsch: Struktur-Objekt zuerst, Metadaten pro Seite folgen
+            combined.append({"structure": structure})
+        # Dann seitenweise Einträge mit Metadaten
+        for i, (page, content) in enumerate(texts.items(), start=1):
+            combined.append({
                 "page": page,
-                "order": i + 1,
+                "order": i,
                 "text": content,
-                "source": os.path.basename(source_file) if source_file else None,
                 "title": metadata.get("title", ""),
                 "author": metadata.get("author", ""),
                 "year": metadata.get("year", ""),
-                "vd_number": metadata.get("vd_number", "")
-            }
-            for i, (page, content) in enumerate(texts.items())
-        ]
+                "vd_number": metadata.get("vd_number", ""),
+                "source": os.path.basename(metadata.get("_mets_path", "")) if metadata.get("_mets_path") else None
+            })
         with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(pages, f, ensure_ascii=False, indent=2)
+            json.dump(combined, f, ensure_ascii=False, indent=2)
     else:
         sep = "\n\n---\n\n" if fmt == "md" else "\n\n"
         content = sep.join(texts.values())
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(content)
+
     logging.info(f"Gesamtausgabe gespeichert: {output_path}")
 
 
-def save_pagewise_output(texts: dict[str, str], output_dir: str, fmt: str,
-                         source_file: str = "", metadata: dict[str, str] = None) -> None:
-    """Speichert jede Seite einzeln in einem Unterordner."""
-    os.makedirs(output_dir, exist_ok=True)
+def save_pagewise_output(texts: Dict[str, str], output_dir: str, fmt: str,
+                         structure=None, metadata: Dict[str, str] = None) -> None:
+    """
+    Speichert jede Seite einzeln in einem Unterordner.
+    Bei JSON: legt zuerst content.json mit Struktur an, dann page_XXXX.json mit Metadaten.
+    """
     metadata = metadata or {}
+    os.makedirs(output_dir, exist_ok=True)
 
+    # content.json mit Struktur (nur Struktur, ohne weitere Metadaten)
+    if fmt == "json" and structure:
+        content_path = os.path.join(output_dir, "content.json")
+        with open(content_path, "w", encoding="utf-8") as f:
+            json.dump({"content": structure}, f, ensure_ascii=False, indent=2)
+        logging.info(f"Strukturdatei gespeichert: {content_path}")
+
+    # dann jede Seite als eigene Datei (mit Metadaten)
     for i, (page, content) in enumerate(texts.items(), start=1):
         if fmt == "json":
             out_path = os.path.join(output_dir, f"{page}.json")
@@ -160,11 +202,11 @@ def save_pagewise_output(texts: dict[str, str], output_dir: str, fmt: str,
                 "page": page,
                 "order": i,
                 "text": content,
-                "source": os.path.basename(source_file) if source_file else None,
                 "title": metadata.get("title", ""),
                 "author": metadata.get("author", ""),
                 "year": metadata.get("year", ""),
-                "vd_number": metadata.get("vd_number", "")
+                "vd_number": metadata.get("vd_number", ""),
+                "source": os.path.basename(metadata.get("_mets_path", "")) if metadata.get("_mets_path") else None
             }
             with open(out_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -183,10 +225,11 @@ def run_extraction(
     output_dir: str = "."
 ) -> None:
     """
-    Führt die gesamte OCR-Extraktion aus:
-    - Liest METS-Datei
-    - Extrahiert Texte aus allen ALTO-Dateien
-    - Speichert Ausgabe als Gesamtdatei oder seitenweise
+    Hauptfunktion:
+    - Liest METS
+    - Extrahiert Struktur und Metadaten
+    - Extrahiert ALTO-Texte
+    - Speichert Ausgaben (full/page) inkl. Metadaten
     """
     if not mets_path:
         raise ValueError("mets_path darf nicht leer sein.")
@@ -198,7 +241,16 @@ def run_extraction(
     normalize = not histlit
 
     logging.info(f"Lese METS-Datei: {mets_path}")
+
+    # Metadaten (title, author, year, vd_number)
     metadata = extract_metadata_from_mets(mets_path)
+    # Hilfsfeld, damit save-Funktionen die Quelle leicht erhalten können
+    metadata["_mets_path"] = mets_path
+
+    # Struktur (structMap)
+    structure = extract_structure(mets_path)
+
+    # Texte
     texts = extract_all_texts(mets_path, normalize=normalize)
 
     base_name = os.path.splitext(os.path.basename(mets_path))[0]
@@ -206,9 +258,9 @@ def run_extraction(
 
     if full:
         output_path = os.path.join(output_dir, f"{base_name}_volltext.{output_format}")
-        save_full_output(texts, output_path, output_format, source_file=mets_path, metadata=metadata)
+        save_full_output(texts, output_path, output_format, structure=structure, metadata=metadata)
     else:
         page_dir = os.path.join(output_dir, f"{base_name}_pages")
-        save_pagewise_output(texts, page_dir, output_format, source_file=mets_path, metadata=metadata)
+        save_pagewise_output(texts, page_dir, output_format, structure=structure, metadata=metadata)
 
     logging.info("Extraktion abgeschlossen.")
